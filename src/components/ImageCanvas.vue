@@ -252,6 +252,7 @@ const handleMouseMove = (event: MouseEvent) => {
   // 定規ツールでのドラッグ描画
   if (isDrawing && startPoint && store.currentTool === 'ruler') {
     const currentPoint = displayToImage(mousePos)
+    const startPointSafe = startPoint // TypeScript型ガード用
     
     // 画像と既存の定規を再描画
     const img = new Image()
@@ -259,7 +260,7 @@ const handleMouseMove = (event: MouseEvent) => {
       drawImage(img, store.image)
       drawRulers(store.rulers, store.image, store.lockedRatios)
       // 一時的な定規を描画
-      drawTemporaryRuler(startPoint, currentPoint, store.image)
+      drawTemporaryRuler(startPointSafe, currentPoint, store.image)
     }
     img.src = store.image.src
   }
