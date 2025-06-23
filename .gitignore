@@ -52,3 +52,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Development documentation and IDE settings
+claude.md
+.cursor/
+.claude/
