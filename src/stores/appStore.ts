@@ -19,7 +19,7 @@ export const useAppStore = defineStore('app', () => {
   })
 
   // アクション
-  const setCurrentTool = (tool: ToolType) => {
+  const setCurrentTool = (tool: ToolType): void => {
     currentTool.value = tool
     // ツール変更時は選択状態をクリア
     selectedRuler.value = null
@@ -31,7 +31,7 @@ export const useAppStore = defineStore('app', () => {
     })
   }
 
-  const addRuler = (ruler: Ruler) => {
+  const addRuler = (ruler: Ruler): void => {
     rulers.value.push(ruler)
   }
 

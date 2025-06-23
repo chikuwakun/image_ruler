@@ -114,7 +114,7 @@ watch(() => store.lockedRatios, () => {
   }
 }, { deep: true })
 
-const resizeCanvas = () => {
+const resizeCanvas = (): void => {
   if (canvasRef.value && canvasRef.value.parentElement) {
     const parent = canvasRef.value.parentElement
     const rect = parent.getBoundingClientRect()
@@ -146,7 +146,7 @@ const resizeCanvas = () => {
   }
 }
 
-const fitImageToCanvas = (img: HTMLImageElement) => {
+const fitImageToCanvas = (img: HTMLImageElement): void => {
   if (!canvasRef.value) return
   
   const canvasWidth = canvasRef.value.clientWidth
@@ -186,7 +186,7 @@ const displayToImage = (displayPoint: Point): Point => {
   }
 }
 
-const handleMouseDown = (event: MouseEvent) => {
+const handleMouseDown = (event: MouseEvent): void => {
   const mousePos = getMousePosition(event)
   
   if (store.currentTool === 'ruler' && store.hasImage) {

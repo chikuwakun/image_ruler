@@ -1,11 +1,21 @@
 import { ref } from 'vue'
 import type { ImageData, Ruler, LockedRatio, Point } from '@/types'
 
-export function useCanvas() {
+export function useCanvas(): {
+  canvasRef: any
+  setupCanvas: (canvas: HTMLCanvasElement) => void
+  clearCanvas: () => void
+  drawImage: (image: HTMLImageElement, imageData: ImageData) => void
+  drawRulers: (rulers: Ruler[], imageData: ImageData, lockedRatios?: LockedRatio[]) => void
+  drawRuler: (ruler: Ruler, imageData: ImageData, lockedRatios?: LockedRatio[]) => void
+  drawTemporaryRuler: (startPoint: Point, endPoint: Point, imageData: ImageData) => void
+  imageToDisplay: (imagePoint: Point, imageData: ImageData) => Point
+  getContext: () => CanvasRenderingContext2D | null
+} {
   const canvasRef = ref<HTMLCanvasElement | null>(null)
   let context: CanvasRenderingContext2D | null = null
 
-  const setupCanvas = (canvas: HTMLCanvasElement) => {
+  const setupCanvas = (canvas: HTMLCanvasElement): void => {
     canvasRef.value = canvas
     context = canvas.getContext('2d')
     
@@ -17,7 +27,7 @@ export function useCanvas() {
     setupHighDPICanvas(canvas)
   }
 
-  const setupHighDPICanvas = (canvas: HTMLCanvasElement) => {
+  const setupHighDPICanvas = (canvas: HTMLCanvasElement): void => {
     const ctx = context!
     const rect = canvas.getBoundingClientRect()
     const pixelRatio = window.devicePixelRatio || 1
@@ -32,13 +42,13 @@ export function useCanvas() {
     ctx.scale(pixelRatio, pixelRatio)
   }
 
-  const clearCanvas = () => {
+  const clearCanvas = (): void => {
     if (!context || !canvasRef.value) return
     
     context.clearRect(0, 0, canvasRef.value.clientWidth, canvasRef.value.clientHeight)
   }
 
-  const drawImage = (image: HTMLImageElement, imageData: ImageData) => {
+  const drawImage = (image: HTMLImageElement, imageData: ImageData): void => {
     if (!context || !canvasRef.value) return
     
     clearCanvas()
@@ -50,7 +60,7 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawRulers = (rulers: Ruler[], imageData: ImageData, lockedRatios: LockedRatio[] = []) => {
+  const drawRulers = (rulers: Ruler[], imageData: ImageData, lockedRatios: LockedRatio[] = []): void => {
     if (!context || !canvasRef.value) return
     
     rulers.forEach(ruler => {
@@ -58,7 +68,7 @@ export function useCanvas() {
     })
   }
 
-  const drawRuler = (ruler: Ruler, imageData: ImageData, lockedRatios: LockedRatio[] = []) => {
+  const drawRuler = (ruler: Ruler, imageData: ImageData, lockedRatios: LockedRatio[] = []): void => {
     if (!context) return
     
     context.save()
@@ -108,7 +118,7 @@ export function useCanvas() {
       context.setLineDash([])
       
       // 回転ハンドルの描画
-      drawRotationHandle(midDisplay, angle, imageData)
+      drawRotationHandle(midDisplay, angle)
     }
     
     if (ruler.isCompareSelected) {
@@ -128,7 +138,7 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawRulerMark = (point: { x: number; y: number }, perpAngle: number, length: number, isImportant: boolean = false) => {
+  const drawRulerMark = (point: { x: number; y: number }, perpAngle: number, length: number, isImportant: boolean = false): void => {
     if (!context) return
     
     const markStart = {
@@ -157,7 +167,7 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawRulerMarks = (startDisplay: Point, endDisplay: Point, perpAngle: number, divisions: number) => {
+  const drawRulerMarks = (startDisplay: Point, endDisplay: Point, perpAngle: number, divisions: number): void => {
     if (!context) return
     
     // 等分数に応じて目盛りを描画
@@ -193,7 +203,7 @@ export function useCanvas() {
     }
   }
 
-  const drawTEndPoint = (point: { x: number; y: number }, angle: number, isSelected: boolean, tLength: number = 12) => {
+  const drawTEndPoint = (point: { x: number; y: number }, angle: number, isSelected: boolean, tLength: number = 12): void => {
     if (!context) return
     
     const actualLength = isSelected ? tLength + 2 : tLength
@@ -236,7 +246,7 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawTemporaryRuler = (startPoint: { x: number; y: number }, endPoint: { x: number; y: number }, imageData: ImageData) => {
+  const drawTemporaryRuler = (startPoint: { x: number; y: number }, endPoint: { x: number; y: number }, imageData: ImageData): void => {
     if (!context) return
     
     context.save()
@@ -274,7 +284,7 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawRotationHandle = (midDisplay: { x: number; y: number }, angle: number, imageData: ImageData) => {
+  const drawRotationHandle = (midDisplay: { x: number; y: number }, angle: number): void => {
     if (!context) return
     
     // 回転ハンドルの位置（定規から垂直に30px離れた位置）
@@ -342,7 +352,7 @@ export function useCanvas() {
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
   }
 
-  const imageToDisplay = (imagePoint: { x: number; y: number }, imageData: ImageData) => {
+  const imageToDisplay = (imagePoint: { x: number; y: number }, imageData: ImageData): Point => {
     return {
       x: imagePoint.x * imageData.scale + imageData.offsetX,
       y: imagePoint.y * imageData.scale + imageData.offsetY
@@ -355,7 +365,7 @@ export function useCanvas() {
     endDisplay: { x: number; y: number }, 
     imageData: ImageData, 
     lockedRatios: LockedRatio[]
-  ) => {
+  ): void => {
     if (!context) return
     
     // このrulerが含まれるロックを見つける
@@ -396,7 +406,7 @@ export function useCanvas() {
     })
   }
 
-  const drawRatioLabel = (x: number, y: number, text: string, color: string, scale: number = 1) => {
+  const drawRatioLabel = (x: number, y: number, text: string, color: string, scale: number = 1): void => {
     if (!context) return
     
     context.save()
@@ -444,7 +454,7 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawRoundedRect = (x: number, y: number, width: number, height: number, radius: number) => {
+  const drawRoundedRect = (x: number, y: number, width: number, height: number, radius: number): void => {
     if (!context) return
     
     context.beginPath()
@@ -461,7 +471,7 @@ export function useCanvas() {
     context.fill()
   }
 
-  const drawRoundedRectStroke = (x: number, y: number, width: number, height: number, radius: number) => {
+  const drawRoundedRectStroke = (x: number, y: number, width: number, height: number, radius: number): void => {
     if (!context) return
     
     context.beginPath()
@@ -491,7 +501,7 @@ export function useCanvas() {
     return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
   }
 
-  const getContext = () => context
+  const getContext = (): CanvasRenderingContext2D | null => context
 
   return {
     canvasRef,
