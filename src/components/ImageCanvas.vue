@@ -69,7 +69,7 @@ watch(() => store.image.src, async () => {
       // 画像をキャンバスにフィット
       fitImageToCanvas(img)
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
     }
     img.src = store.image.src
   } else {
@@ -84,7 +84,31 @@ watch(() => store.rulers, () => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
+    }
+    img.src = store.image.src
+  }
+}, { deep: true })
+
+// 画像のスケール・オフセットが変更されたときの再描画
+watch(() => [store.image.scale, store.image.offsetX, store.image.offsetY], () => {
+  if (store.hasImage && canvasRef.value) {
+    const img = new Image()
+    img.onload = () => {
+      drawImage(img, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
+    }
+    img.src = store.image.src
+  }
+}, { deep: true })
+
+// ロック済み比率が変更されたときの再描画
+watch(() => store.lockedRatios, () => {
+  if (store.hasImage && canvasRef.value) {
+    const img = new Image()
+    img.onload = () => {
+      drawImage(img, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
     }
     img.src = store.image.src
   }
@@ -115,7 +139,7 @@ const resizeCanvas = () => {
       const img = new Image()
       img.onload = () => {
         drawImage(img, store.image)
-        drawRulers(store.rulers, store.image)
+        drawRulers(store.rulers, store.image, store.lockedRatios)
       }
       img.src = store.image.src
     }
@@ -233,7 +257,7 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
       // 一時的な定規を描画
       drawTemporaryRuler(startPoint, currentPoint, store.image)
     }
@@ -257,7 +281,7 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
     }
     img.src = store.image.src
   }
@@ -292,7 +316,7 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
     }
     img.src = store.image.src
   }
@@ -338,7 +362,7 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios)
     }
     img.src = store.image.src
   }
@@ -382,7 +406,7 @@ const handleMouseUp = (event: MouseEvent) => {
       const img = new Image()
       img.onload = () => {
         drawImage(img, store.image)
-        drawRulers(store.rulers, store.image)
+        drawRulers(store.rulers, store.image, store.lockedRatios)
       }
       img.src = store.image.src
     }
@@ -423,7 +447,7 @@ const handleWheel = (event: WheelEvent) => {
   const img = new Image()
   img.onload = () => {
     drawImage(img, store.image)
-    drawRulers(store.rulers, store.image)
+    drawRulers(store.rulers, store.image, store.lockedRatios)
   }
   img.src = store.image.src
 }

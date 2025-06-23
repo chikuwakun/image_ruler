@@ -93,12 +93,21 @@
           <div class="text-xs text-gray-400">
             実際の比率: {{ getActualRatioInSimpleTerms() }}
           </div>
-          <button
-            @click="clearComparison"
-            class="w-full mt-2 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-500 transition-colors"
-          >
-            比較をクリア
-          </button>
+          <div class="flex space-x-2 mt-2">
+            <button
+              @click="lockComparison"
+              class="flex-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
+            >
+              <Lock :size="12" class="inline mr-1" />
+              ロック
+            </button>
+            <button
+              @click="clearComparison"
+              class="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-500 transition-colors"
+            >
+              クリア
+            </button>
+          </div>
         </div>
       </div>
       
@@ -169,12 +178,60 @@
           </div>
         </div>
       </div>
+      
+      <!-- ロック済み比率一覧 -->
+      <div v-if="store.lockedRatios.length > 0" class="space-y-3">
+        <h3 class="text-sm font-medium text-gray-300">ロック済み比率</h3>
+        
+        <div class="max-h-32 overflow-y-auto space-y-1">
+          <div
+            v-for="lock in store.lockedRatios"
+            :key="lock.id"
+            class="p-2 rounded border border-gray-600 bg-gray-700/50 text-xs cursor-pointer hover:bg-gray-700 transition-colors"
+            @click="selectLock(lock.id)"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <div
+                  class="w-3 h-3 rounded"
+                  :style="{ backgroundColor: lock.color }"
+                ></div>
+                <span class="text-gray-300 font-medium">{{ lock.simpleRatio }}</span>
+              </div>
+              
+              <button
+                @click.stop="removeLockRatio(lock.id)"
+                class="text-red-400 hover:text-red-300 p-1"
+              >
+                <X :size="12" />
+              </button>
+            </div>
+            
+            <div class="flex items-center justify-between mt-1 text-gray-500">
+              <div class="flex items-center space-x-1">
+                <div
+                  class="w-2 h-2 rounded"
+                  :style="{ backgroundColor: lock.rulerA.color }"
+                ></div>
+                <span>{{ Math.round(lock.rulerA.length) }}px</span>
+                <span class="mx-1">:</span>
+                <div
+                  class="w-2 h-2 rounded"
+                  :style="{ backgroundColor: lock.rulerB.color }"
+                ></div>
+                <span>{{ Math.round(lock.rulerB.length) }}px</span>
+              </div>
+              <span class="text-xs">{{ lock.actualRatio }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Trash2 } from 'lucide-vue-next'
+import { Trash2, Lock, X } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
 import { getRulerColorByDivisions, MIN_DIVISIONS, MAX_DIVISIONS } from '@/utils/rulerUtils'
 
@@ -238,24 +295,6 @@ const getRatio = (): string => {
   return '---'
 }
 
-const getSimpleRatio = (): string => {
-  const compareRulers = store.compareRulers
-  if (compareRulers.length === 2) {
-    const ratio = compareRulers[0].length / compareRulers[1].length
-    return calculateSimpleRatio(ratio).simpleRatio
-  }
-  return '---'
-}
-
-const getActualRatioInSimpleTerms = (): string => {
-  const compareRulers = store.compareRulers
-  if (compareRulers.length === 2) {
-    const ratio = compareRulers[0].length / compareRulers[1].length
-    return calculateSimpleRatio(ratio).actualRatio
-  }
-  return '---'
-}
-
 const calculateSimpleRatio = (ratio: number): { simpleRatio: string; actualRatio: string } => {
   let bestX = 1
   let bestY = 1
@@ -276,16 +315,22 @@ const calculateSimpleRatio = (ratio: number): { simpleRatio: string; actualRatio
   }
   
   // 約分する
-  const gcd = getGCD(bestX, bestY)
-  const simplifiedX = bestX / gcd
-  const simplifiedY = bestY / gcd
+  const gcd = (a: number, b: number): number => {
+    while (b !== 0) {
+      const temp = b
+      b = a % b
+      a = temp
+    }
+    return a
+  }
+  
+  const simplifiedX = bestX / gcd(bestX, bestY)
+  const simplifiedY = bestY / gcd(bestX, bestY)
   
   // 実際の比率を簡易比率のスケールで表示
-  // 比率がx、簡易比率がy:zの場合、実際の比率は(z*x):z
   const actualXValue = simplifiedY * ratio
   const actualYValue = simplifiedY
   
-  // 小数点以下が0の場合は整数表示、そうでなければ小数点2桁
   const actualX = actualXValue % 1 === 0 ? actualXValue.toString() : actualXValue.toFixed(2)
   const actualY = actualYValue % 1 === 0 ? actualYValue.toString() : actualYValue.toFixed(2)
   
@@ -295,14 +340,22 @@ const calculateSimpleRatio = (ratio: number): { simpleRatio: string; actualRatio
   }
 }
 
-// 最大公約数を求める関数
-const getGCD = (a: number, b: number): number => {
-  while (b !== 0) {
-    const temp = b
-    b = a % b
-    a = temp
+const getSimpleRatio = (): string => {
+  const compareRulers = store.compareRulers
+  if (compareRulers.length === 2) {
+    const ratio = compareRulers[0].length / compareRulers[1].length
+    return calculateSimpleRatio(ratio).simpleRatio
   }
-  return a
+  return '---'
+}
+
+const getActualRatioInSimpleTerms = (): string => {
+  const compareRulers = store.compareRulers
+  if (compareRulers.length === 2) {
+    const ratio = compareRulers[0].length / compareRulers[1].length
+    return calculateSimpleRatio(ratio).actualRatio
+  }
+  return '---'
 }
 
 const clearComparison = (): void => {
@@ -311,5 +364,17 @@ const clearComparison = (): void => {
       store.updateRuler(ruler.id, { isCompareSelected: false })
     }
   })
+}
+
+const lockComparison = (): void => {
+  store.lockCurrentComparison()
+}
+
+const removeLockRatio = (lockId: string): void => {
+  store.removeLock(lockId)
+}
+
+const selectLock = (lockId: string): void => {
+  store.selectLockForComparison(lockId)
 }
 </script>

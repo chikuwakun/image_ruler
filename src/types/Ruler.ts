@@ -21,3 +21,14 @@ export interface RulerBounds {
   width: number
   height: number
 }
+
+export interface LockedRatio {
+  id: string
+  rulerA: Ruler
+  rulerB: Ruler
+  simpleRatio: string
+  actualRatio: string
+  ratio: number
+  color: string
+  createdAt: number
+}

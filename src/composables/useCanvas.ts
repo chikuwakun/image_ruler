@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { ImageData, Ruler } from '@/types'
+import type { ImageData, Ruler, LockedRatio, Point } from '@/types'
 
 export function useCanvas() {
   const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -50,15 +50,15 @@ export function useCanvas() {
     context.restore()
   }
 
-  const drawRulers = (rulers: Ruler[], imageData: ImageData) => {
+  const drawRulers = (rulers: Ruler[], imageData: ImageData, lockedRatios: LockedRatio[] = []) => {
     if (!context || !canvasRef.value) return
     
     rulers.forEach(ruler => {
-      drawRuler(ruler, imageData)
+      drawRuler(ruler, imageData, lockedRatios)
     })
   }
 
-  const drawRuler = (ruler: Ruler, imageData: ImageData) => {
+  const drawRuler = (ruler: Ruler, imageData: ImageData, lockedRatios: LockedRatio[] = []) => {
     if (!context) return
     
     context.save()
@@ -121,6 +121,9 @@ export function useCanvas() {
       context.stroke()
       context.setLineDash([])
     }
+    
+    // ロック済み比率の表示
+    drawLockedRatioLabels(ruler, startDisplay, endDisplay, imageData, lockedRatios)
     
     context.restore()
   }
@@ -344,6 +347,148 @@ export function useCanvas() {
       x: imagePoint.x * imageData.scale + imageData.offsetX,
       y: imagePoint.y * imageData.scale + imageData.offsetY
     }
+  }
+
+  const drawLockedRatioLabels = (
+    ruler: Ruler, 
+    startDisplay: { x: number; y: number }, 
+    endDisplay: { x: number; y: number }, 
+    imageData: ImageData, 
+    lockedRatios: LockedRatio[]
+  ) => {
+    if (!context) return
+    
+    // このrulerが含まれるロックを見つける
+    const rulerLocks = lockedRatios.filter(lock => 
+      lock.rulerA.id === ruler.id || lock.rulerB.id === ruler.id
+    )
+    
+    if (rulerLocks.length === 0) return
+    
+    // 定規の中心点から少し離れた位置に表示
+    const midX = (startDisplay.x + endDisplay.x) / 2
+    const midY = (startDisplay.y + endDisplay.y) / 2
+    const angle = Math.atan2(endDisplay.y - startDisplay.y, endDisplay.x - startDisplay.x)
+    const perpAngle = angle + Math.PI / 2
+    
+    // スケールに応じてオフセットとフォントサイズを調整
+    const scale = imageData.scale
+    const baseOffset = Math.max(25, 15 * scale) // 最小25px、スケールに応じて調整
+    const offsetIncrement = Math.max(20, 12 * scale) // 最小20px、スケールに応じて調整
+    
+    // 複数のロックがある場合は並べて表示
+    // 回転ハンドルと重複しないよう、選択時は逆側に表示
+    const isSelected = ruler.isSelected
+    const direction = isSelected ? -1 : 1 // 選択時は逆方向
+    
+    rulerLocks.forEach((lock, index) => {
+      const offset = (baseOffset + (index * offsetIncrement)) * direction
+      const labelX = midX + Math.cos(perpAngle) * offset
+      const labelY = midY + Math.sin(perpAngle) * offset
+      
+      // このrulerがrulerAかrulerBかを判定して適切な比率を表示
+      const isRulerA = lock.rulerA.id === ruler.id
+      const ratioText = isRulerA 
+        ? lock.simpleRatio.split(':')[0] 
+        : lock.simpleRatio.split(':')[1]
+      
+      drawRatioLabel(labelX, labelY, ratioText, lock.color, scale)
+    })
+  }
+
+  const drawRatioLabel = (x: number, y: number, text: string, color: string, scale: number = 1) => {
+    if (!context) return
+    
+    context.save()
+    
+    // スケールに応じてフォントサイズを調整（最小12px、最大20px）
+    const fontSize = Math.max(12, Math.min(20, 14 * scale))
+    context.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+    
+    const textMetrics = context.measureText(text)
+    const paddingX = Math.max(6, 4 * scale)
+    const paddingY = Math.max(3, 2 * scale)
+    const bgWidth = textMetrics.width + paddingX * 2
+    const bgHeight = fontSize + paddingY * 2
+    const cornerRadius = Math.max(3, 2 * scale) // より小さな角丸
+    
+    // フラットな背景（単色、ダークテーマに合わせて彩度を下げる）
+    const darkColor = darkenColor(color, 0.3)
+    context.fillStyle = darkColor
+    
+    drawRoundedRect(
+      x - bgWidth / 2, 
+      y - bgHeight / 2, 
+      bgWidth, 
+      bgHeight, 
+      cornerRadius
+    )
+    
+    // シンプルな境界線（ダークテーマに合わせてグレー）
+    context.strokeStyle = 'rgba(255, 255, 255, 0.1)'
+    context.lineWidth = Math.max(1, scale * 0.5)
+    drawRoundedRectStroke(
+      x - bgWidth / 2, 
+      y - bgHeight / 2, 
+      bgWidth, 
+      bgHeight, 
+      cornerRadius
+    )
+    
+    // テキストの描画（シンプルな白文字、影なし）
+    context.fillStyle = '#ffffff'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.fillText(text, x, y)
+    
+    context.restore()
+  }
+
+  const drawRoundedRect = (x: number, y: number, width: number, height: number, radius: number) => {
+    if (!context) return
+    
+    context.beginPath()
+    context.moveTo(x + radius, y)
+    context.lineTo(x + width - radius, y)
+    context.quadraticCurveTo(x + width, y, x + width, y + radius)
+    context.lineTo(x + width, y + height - radius)
+    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+    context.lineTo(x + radius, y + height)
+    context.quadraticCurveTo(x, y + height, x, y + height - radius)
+    context.lineTo(x, y + radius)
+    context.quadraticCurveTo(x, y, x + radius, y)
+    context.closePath()
+    context.fill()
+  }
+
+  const drawRoundedRectStroke = (x: number, y: number, width: number, height: number, radius: number) => {
+    if (!context) return
+    
+    context.beginPath()
+    context.moveTo(x + radius, y)
+    context.lineTo(x + width - radius, y)
+    context.quadraticCurveTo(x + width, y, x + width, y + radius)
+    context.lineTo(x + width, y + height - radius)
+    context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+    context.lineTo(x + radius, y + height)
+    context.quadraticCurveTo(x, y + height, x, y + height - radius)
+    context.lineTo(x, y + radius)
+    context.quadraticCurveTo(x, y, x + radius, y)
+    context.closePath()
+    context.stroke()
+  }
+
+  const darkenColor = (hexColor: string, factor: number): string => {
+    const hex = hexColor.replace('#', '')
+    const r = parseInt(hex.substr(0, 2), 16)
+    const g = parseInt(hex.substr(2, 2), 16)
+    const b = parseInt(hex.substr(4, 2), 16)
+    
+    const newR = Math.round(r * (1 - factor))
+    const newG = Math.round(g * (1 - factor))
+    const newB = Math.round(b * (1 - factor))
+    
+    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`
   }
 
   const getContext = () => context
