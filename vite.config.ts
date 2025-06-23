@@ -5,8 +5,8 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [vue()],
   
-  // GitHub Pages用設定（相対パス）
-  base: './',
+  // GitHub Pages用設定
+  base: process.env.NODE_ENV === 'production' ? '/image_ruler/' : '/',
   
   // ビルド設定
   build: {
