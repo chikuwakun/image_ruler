@@ -95,7 +95,7 @@ export function useCanvas(): {
     
     // ハイライト表示（選択された履歴に含まれる定規）- 目盛りより下に描画
     if (highlightedRulerIds.includes(ruler.id)) {
-      drawRulerHighlight(ruler, startDisplay, endDisplay, imageData)
+      drawRulerHighlight(ruler, startDisplay, endDisplay)
     }
     
     // 定規の目盛りを描画
