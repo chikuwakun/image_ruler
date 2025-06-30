@@ -16,7 +16,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/appStore'
-import { ContextMode } from '@/types'
 
 const store = useAppStore()
 
@@ -25,7 +24,6 @@ const showWizard = computed(() => {
   return store.isInComparisonMode && currentStep.value < 3
 })
 
-const totalSteps = 3
 const currentStep = computed(() => {
   const comparisonCount = store.compareRulers.length
   if (comparisonCount === 0) return 1

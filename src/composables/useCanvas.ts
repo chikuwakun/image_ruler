@@ -515,7 +515,7 @@ export function useCanvas(): {
 
   const getContext = (): CanvasRenderingContext2D | null => context
 
-  const drawRulerHighlight = (ruler: Ruler, startDisplay: { x: number; y: number }, endDisplay: { x: number; y: number }, imageData: ImageData): void => {
+  const drawRulerHighlight = (ruler: Ruler, startDisplay: { x: number; y: number }, endDisplay: { x: number; y: number }): void => {
     if (!context) return
     
     context.save()

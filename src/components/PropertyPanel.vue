@@ -260,10 +260,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Trash2, Lock, X } from 'lucide-vue-next'
+import { Trash2, X } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
 import { MIN_DIVISIONS, MAX_DIVISIONS } from '@/utils/rulerUtils'
-import { ContextMode } from '@/types'
 
 const store = useAppStore()
 
@@ -310,14 +309,6 @@ const selectRuler = (id: string): void => {
   }
 }
 
-const getRatio = (): string => {
-  const compareRulers = store.compareRulers
-  if (compareRulers.length === 2) {
-    const ratio = compareRulers[0].length / compareRulers[1].length
-    return ratio.toFixed(2)
-  }
-  return '---'
-}
 
 const calculateSimpleRatio = (ratio: number): { simpleRatio: string; actualRatio: string } => {
   let bestX = 1
@@ -382,14 +373,7 @@ const getActualRatioInSimpleTerms = (): string => {
   return '---'
 }
 
-const clearComparison = (): void => {
-  // 新しいclearComparisonStateメソッドを使用
-  store.clearComparisonState()
-}
 
-const lockComparison = (): void => {
-  store.lockCurrentComparison()
-}
 
 
 const removeHistory = (historyId: string): void => {
@@ -401,8 +385,5 @@ const selectHistory = (historyId: string): void => {
   store.selectHistory(historyId)
 }
 
-const clearHistorySelection = (): void => {
-  store.clearHistorySelection()
-}
 
 </script>
