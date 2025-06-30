@@ -6,8 +6,8 @@ export function useCanvas(): {
   setupCanvas: (canvas: HTMLCanvasElement) => void
   clearCanvas: () => void
   drawImage: (image: HTMLImageElement, imageData: ImageData) => void
-  drawRulers: (rulers: Ruler[], imageData: ImageData, lockedRatios?: LockedRatio[]) => void
-  drawRuler: (ruler: Ruler, imageData: ImageData, lockedRatios?: LockedRatio[]) => void
+  drawRulers: (rulers: Ruler[], imageData: ImageData, lockedRatios?: LockedRatio[], highlightedRulerIds?: string[]) => void
+  drawRuler: (ruler: Ruler, imageData: ImageData, lockedRatios?: LockedRatio[], highlightedRulerIds?: string[]) => void
   drawTemporaryRuler: (startPoint: Point, endPoint: Point, imageData: ImageData) => void
   imageToDisplay: (imagePoint: Point, imageData: ImageData) => Point
   getContext: () => CanvasRenderingContext2D | null
@@ -60,15 +60,15 @@ export function useCanvas(): {
     context.restore()
   }
 
-  const drawRulers = (rulers: Ruler[], imageData: ImageData, lockedRatios: LockedRatio[] = []): void => {
+  const drawRulers = (rulers: Ruler[], imageData: ImageData, lockedRatios: LockedRatio[] = [], highlightedRulerIds: string[] = []): void => {
     if (!context || !canvasRef.value) return
     
     rulers.forEach(ruler => {
-      drawRuler(ruler, imageData, lockedRatios)
+      drawRuler(ruler, imageData, lockedRatios, highlightedRulerIds)
     })
   }
 
-  const drawRuler = (ruler: Ruler, imageData: ImageData, lockedRatios: LockedRatio[] = []): void => {
+  const drawRuler = (ruler: Ruler, imageData: ImageData, lockedRatios: LockedRatio[] = [], highlightedRulerIds: string[] = []): void => {
     if (!context) return
     
     context.save()
@@ -92,6 +92,11 @@ export function useCanvas(): {
     context.moveTo(startDisplay.x, startDisplay.y)
     context.lineTo(endDisplay.x, endDisplay.y)
     context.stroke()
+    
+    // ハイライト表示（選択された履歴に含まれる定規）- 目盛りより下に描画
+    if (highlightedRulerIds.includes(ruler.id)) {
+      drawRulerHighlight(ruler, startDisplay, endDisplay, imageData)
+    }
     
     // 定規の目盛りを描画
     const angle = Math.atan2(endDisplay.y - startDisplay.y, endDisplay.x - startDisplay.x)
@@ -118,7 +123,7 @@ export function useCanvas(): {
       context.setLineDash([])
       
       // 回転ハンドルの描画
-      drawRotationHandle(midDisplay, angle)
+      drawRotationHandle(midDisplay, angle, ruler, lockedRatios)
     }
     
     if (ruler.isCompareSelected) {
@@ -132,7 +137,7 @@ export function useCanvas(): {
       context.setLineDash([])
     }
     
-    // ロック済み比率の表示
+    // 比率履歴の表示
     drawLockedRatioLabels(ruler, startDisplay, endDisplay, imageData, lockedRatios)
     
     context.restore()
@@ -284,14 +289,21 @@ export function useCanvas(): {
     context.restore()
   }
 
-  const drawRotationHandle = (midDisplay: { x: number; y: number }, angle: number): void => {
+  const drawRotationHandle = (midDisplay: { x: number; y: number }, angle: number, ruler: Ruler, lockedRatios: LockedRatio[]): void => {
     if (!context) return
     
-    // 回転ハンドルの位置（定規から垂直に30px離れた位置）
+    // 比率表示があるかチェック
+    const hasRatioDisplay = lockedRatios.some(lock => 
+      lock.rulerA.id === ruler.id || lock.rulerB.id === ruler.id
+    )
+    
+    // 回転ハンドルの位置を比率表示の逆側に配置
     const perpAngle = angle + Math.PI / 2
     const handleDistance = 30
-    const handleX = midDisplay.x + Math.cos(perpAngle) * handleDistance
-    const handleY = midDisplay.y + Math.sin(perpAngle) * handleDistance
+    // 比率表示がある場合は逆方向、ない場合は通常方向
+    const direction = hasRatioDisplay ? 1 : -1
+    const handleX = midDisplay.x + Math.cos(perpAngle) * handleDistance * direction
+    const handleY = midDisplay.y + Math.sin(perpAngle) * handleDistance * direction
     
     context.save()
     
@@ -368,7 +380,7 @@ export function useCanvas(): {
   ): void => {
     if (!context) return
     
-    // このrulerが含まれるロックを見つける
+    // このrulerが含まれる履歴を見つける
     const rulerLocks = lockedRatios.filter(lock => 
       lock.rulerA.id === ruler.id || lock.rulerB.id === ruler.id
     )
@@ -386,7 +398,7 @@ export function useCanvas(): {
     const baseOffset = Math.max(25, 15 * scale) // 最小25px、スケールに応じて調整
     const offsetIncrement = Math.max(20, 12 * scale) // 最小20px、スケールに応じて調整
     
-    // 複数のロックがある場合は並べて表示
+    // 複数の履歴がある場合は並べて表示
     // 回転ハンドルと重複しないよう、選択時は逆側に表示
     const isSelected = ruler.isSelected
     const direction = isSelected ? -1 : 1 // 選択時は逆方向
@@ -502,6 +514,63 @@ export function useCanvas(): {
   }
 
   const getContext = (): CanvasRenderingContext2D | null => context
+
+  const drawRulerHighlight = (ruler: Ruler, startDisplay: { x: number; y: number }, endDisplay: { x: number; y: number }, imageData: ImageData): void => {
+    if (!context) return
+    
+    context.save()
+    
+    // 定規本体を再描画してハイライト効果を適用
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    
+    // グロー効果（外側の大きなシャドウ）
+    context.shadowColor = '#fbbf24' // yellow-400
+    context.shadowBlur = 12
+    context.shadowOffsetX = 0
+    context.shadowOffsetY = 0
+    context.strokeStyle = '#fbbf24'
+    context.lineWidth = 6
+    context.globalAlpha = 0.6
+    
+    // グロー用の定規描画
+    context.beginPath()
+    context.moveTo(startDisplay.x, startDisplay.y)
+    context.lineTo(endDisplay.x, endDisplay.y)
+    context.stroke()
+    
+    // ドロップシャドウ効果（下側）
+    context.shadowColor = 'rgba(0, 0, 0, 0.5)'
+    context.shadowBlur = 8
+    context.shadowOffsetX = 2
+    context.shadowOffsetY = 2
+    context.strokeStyle = ruler.color
+    context.lineWidth = 3
+    context.globalAlpha = 1
+    
+    // シャドウ用の定規描画
+    context.beginPath()
+    context.moveTo(startDisplay.x, startDisplay.y)
+    context.lineTo(endDisplay.x, endDisplay.y)
+    context.stroke()
+    
+    // 内側のハイライト（明るい輪郭）
+    context.shadowColor = 'transparent'
+    context.shadowBlur = 0
+    context.shadowOffsetX = 0
+    context.shadowOffsetY = 0
+    context.strokeStyle = '#ffffff'
+    context.lineWidth = 1
+    context.globalAlpha = 0.8
+    
+    // 白いハイライト線
+    context.beginPath()
+    context.moveTo(startDisplay.x, startDisplay.y)
+    context.lineTo(endDisplay.x, endDisplay.y)
+    context.stroke()
+    
+    context.restore()
+  }
 
   return {
     canvasRef,

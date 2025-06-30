@@ -28,7 +28,7 @@
         @change="handleFileUpload"
       >
       <button
-        class="btn-primary"
+        class="btn-primary flex items-center"
         @click="triggerFileUpload"
       >
         <Upload :size="16" class="mr-2" />

@@ -58,7 +58,7 @@
       </div>
       
       <!-- 比較モード -->
-      <div v-if="store.currentTool === 'compare'" class="space-y-3">
+      <div v-if="store.isInComparisonMode" class="space-y-3">
         <h3 class="text-sm font-medium text-gray-300">比較モード</h3>
         
         <div v-if="store.compareRulers.length === 0" class="text-xs text-gray-500">
@@ -69,6 +69,9 @@
           <div class="text-xs text-gray-400">
             選択中: {{ Math.round(store.compareRulers[0].length) }}px
             <div class="w-3 h-3 rounded inline-block ml-2" :style="{ backgroundColor: store.compareRulers[0].color }"></div>
+          </div>
+          <div class="text-xs text-gray-400">
+            角度: {{ Math.round(store.compareRulers[0].angle) }}°
           </div>
           <div class="text-xs text-gray-500">
             もう1つの定規を選択してください
@@ -81,11 +84,14 @@
             <div class="w-3 h-3 rounded inline-block ml-2" :style="{ backgroundColor: store.compareRulers[0].color }"></div>
           </div>
           <div class="text-xs text-gray-400">
+            角度A: {{ Math.round(store.compareRulers[0].angle) }}°
+          </div>
+          <div class="text-xs text-gray-400">
             定規B: {{ Math.round(store.compareRulers[1].length) }}px
             <div class="w-3 h-3 rounded inline-block ml-2" :style="{ backgroundColor: store.compareRulers[1].color }"></div>
           </div>
-          <div class="text-xs text-gray-400 font-medium">
-            比率: {{ getRatio() }}
+          <div class="text-xs text-gray-400">
+            角度B: {{ Math.round(store.compareRulers[1].angle) }}°
           </div>
           <div class="text-xs text-gray-400 font-medium">
             簡易比率: {{ getSimpleRatio() }}
@@ -93,20 +99,33 @@
           <div class="text-xs text-gray-400">
             実際の比率: {{ getActualRatioInSimpleTerms() }}
           </div>
-          <div class="flex space-x-2 mt-2">
-            <button
-              @click="lockComparison"
-              class="flex-1 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
-            >
-              <Lock :size="12" class="inline mr-1" />
-              ロック
-            </button>
-            <button
-              @click="clearComparison"
-              class="flex-1 px-3 py-1 bg-gray-600 text-white text-xs rounded hover:bg-gray-500 transition-colors"
-            >
-              クリア
-            </button>
+        </div>
+      </div>
+      
+      <!-- 履歴選択時の比較表示 -->
+      <div v-else-if="selectedHistory" class="space-y-3">
+        <h3 class="text-sm font-medium text-gray-300">選択された比率履歴</h3>
+        
+        <div class="space-y-2">
+          <div class="text-xs text-gray-400">
+            定規A: {{ Math.round(selectedHistory.rulerA.length) }}px
+            <div class="w-3 h-3 rounded inline-block ml-2" :style="{ backgroundColor: selectedHistory.rulerA.color }"></div>
+          </div>
+          <div class="text-xs text-gray-400">
+            角度A: {{ Math.round(selectedHistory.rulerA.angle) }}°
+          </div>
+          <div class="text-xs text-gray-400">
+            定規B: {{ Math.round(selectedHistory.rulerB.length) }}px
+            <div class="w-3 h-3 rounded inline-block ml-2" :style="{ backgroundColor: selectedHistory.rulerB.color }"></div>
+          </div>
+          <div class="text-xs text-gray-400">
+            角度B: {{ Math.round(selectedHistory.rulerB.angle) }}°
+          </div>
+          <div class="text-xs text-gray-400 font-medium">
+            簡易比率: {{ selectedHistory.simpleRatio }}
+          </div>
+          <div class="text-xs text-gray-400">
+            実際の比率: {{ selectedHistory.actualRatio }}
           </div>
         </div>
       </div>
@@ -115,7 +134,7 @@
       <div v-if="store.rulers.length > 0" class="space-y-3">
         <div class="flex items-center justify-between">
           <h3 class="text-sm font-medium text-gray-300">定規一覧</h3>
-          <span v-if="store.currentTool === 'compare'" class="text-xs text-gray-500">
+          <span v-if="store.isInComparisonMode" class="text-xs text-gray-500">
             クリックで比較選択
           </span>
         </div>
@@ -179,49 +198,58 @@
         </div>
       </div>
       
-      <!-- ロック済み比率一覧 -->
+      <!-- 比率履歴一覧 -->
       <div v-if="store.lockedRatios.length > 0" class="space-y-3">
-        <h3 class="text-sm font-medium text-gray-300">ロック済み比率</h3>
+        <h3 class="text-sm font-medium text-gray-300">比率履歴</h3>
         
         <div class="max-h-32 overflow-y-auto space-y-1">
           <div
-            v-for="lock in store.lockedRatios"
-            :key="lock.id"
-            class="p-2 rounded border border-gray-600 bg-gray-700/50 text-xs cursor-pointer hover:bg-gray-700 transition-colors"
-            @click="selectLock(lock.id)"
+            v-for="history in store.lockedRatios"
+            :key="history.id"
+            :class="[
+              'p-2 rounded border text-xs cursor-pointer transition-colors group',
+              store.selectedHistoryId === history.id 
+                ? 'border-yellow-400 bg-yellow-900/30' 
+                : 'border-gray-600 bg-gray-700/50 hover:bg-gray-700'
+            ]"
+            @click="selectHistory(history.id)"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-2">
                 <div
                   class="w-3 h-3 rounded"
-                  :style="{ backgroundColor: lock.color }"
+                  :style="{ backgroundColor: history.color }"
                 ></div>
-                <span class="text-gray-300 font-medium">{{ lock.simpleRatio }}</span>
+                <span class="text-gray-300 font-medium">{{ history.simpleRatio }}</span>
+                <span class="text-xs text-gray-500">比率</span>
               </div>
               
-              <button
-                @click.stop="removeLockRatio(lock.id)"
-                class="text-red-400 hover:text-red-300 p-1"
-              >
-                <X :size="12" />
-              </button>
+              <div class="flex items-center space-x-1">
+                <button
+                  @click.stop="removeHistory(history.id)"
+                  class="text-red-400 hover:text-red-300 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="履歴から削除"
+                >
+                  <X :size="12" />
+                </button>
+              </div>
             </div>
             
             <div class="flex items-center justify-between mt-1 text-gray-500">
               <div class="flex items-center space-x-1">
                 <div
                   class="w-2 h-2 rounded"
-                  :style="{ backgroundColor: lock.rulerA.color }"
+                  :style="{ backgroundColor: history.rulerA.color }"
                 ></div>
-                <span>{{ Math.round(lock.rulerA.length) }}px</span>
+                <span>{{ Math.round(history.rulerA.length) }}px</span>
                 <span class="mx-1">:</span>
                 <div
                   class="w-2 h-2 rounded"
-                  :style="{ backgroundColor: lock.rulerB.color }"
+                  :style="{ backgroundColor: history.rulerB.color }"
                 ></div>
-                <span>{{ Math.round(lock.rulerB.length) }}px</span>
+                <span>{{ Math.round(history.rulerB.length) }}px</span>
               </div>
-              <span class="text-xs">{{ lock.actualRatio }}</span>
+              <span class="text-xs">{{ history.actualRatio }}</span>
             </div>
           </div>
         </div>
@@ -231,11 +259,19 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Trash2, Lock, X } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
-import { getRulerColorByDivisions, MIN_DIVISIONS, MAX_DIVISIONS } from '@/utils/rulerUtils'
+import { MIN_DIVISIONS, MAX_DIVISIONS } from '@/utils/rulerUtils'
+import { ContextMode } from '@/types'
 
 const store = useAppStore()
+
+// 選択された履歴の情報を取得
+const selectedHistory = computed(() => {
+  if (!store.selectedHistoryId) return null
+  return store.lockedRatios.find(h => h.id === store.selectedHistoryId) || null
+})
 
 const updateRulerColor = (event: Event) => {
   const target = event.target as HTMLInputElement
@@ -251,10 +287,8 @@ const changeRulerDivisions = (rulerId: string, delta: number): void => {
     const newDivisions = currentDivisions + delta
     
     if (newDivisions >= MIN_DIVISIONS && newDivisions <= MAX_DIVISIONS) {
-      const newColor = getRulerColorByDivisions(newDivisions)
       store.updateRuler(rulerId, { 
-        divisions: newDivisions,
-        color: newColor
+        divisions: newDivisions
       })
     }
   }
@@ -267,19 +301,9 @@ const deleteSelectedRuler = (): void => {
 }
 
 const selectRuler = (id: string): void => {
-  if (store.currentTool === 'compare') {
-    // 比較モードでは複数選択可能
-    const ruler = store.rulers.find(r => r.id === id)
-    if (ruler) {
-      const compareCount = store.compareRulers.length
-      if (ruler.isCompareSelected) {
-        // 選択解除
-        store.updateRuler(id, { isCompareSelected: false })
-      } else if (compareCount < 2) {
-        // 選択追加
-        store.updateRuler(id, { isCompareSelected: true })
-      }
-    }
+  if (store.isInComparisonMode) {
+    // 比較モードでは比較選択を使用
+    store.toggleCompareSelection(id)
   } else {
     // 通常の選択モード
     store.selectRuler(id)
@@ -359,22 +383,26 @@ const getActualRatioInSimpleTerms = (): string => {
 }
 
 const clearComparison = (): void => {
-  store.rulers.forEach(ruler => {
-    if (ruler.isCompareSelected) {
-      store.updateRuler(ruler.id, { isCompareSelected: false })
-    }
-  })
+  // 新しいclearComparisonStateメソッドを使用
+  store.clearComparisonState()
 }
 
 const lockComparison = (): void => {
   store.lockCurrentComparison()
 }
 
-const removeLockRatio = (lockId: string): void => {
-  store.removeLock(lockId)
+
+const removeHistory = (historyId: string): void => {
+  store.removeLock(historyId)
 }
 
-const selectLock = (lockId: string): void => {
-  store.selectLockForComparison(lockId)
+const selectHistory = (historyId: string): void => {
+  // 履歴を選択してハイライト表示
+  store.selectHistory(historyId)
 }
+
+const clearHistorySelection = (): void => {
+  store.clearHistorySelection()
+}
+
 </script>

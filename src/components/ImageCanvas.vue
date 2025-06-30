@@ -13,6 +13,22 @@
       @wheel.prevent="handleWheel"
     ></canvas>
     
+    
+    <!-- 比較ウィザード -->
+    <ComparisonWizard />
+    
+    <!-- 定規コンテキストメニュー -->
+    <RulerContextMenu
+      :ruler="contextMenuRuler"
+      :position="contextMenuPosition"
+      :is-visible="isContextMenuVisible"
+      @edit="handleContextMenuEdit"
+      @compare="handleContextMenuCompare"
+      @change-color="handleContextMenuChangeColor"
+      @delete="handleContextMenuDelete"
+      @close="closeContextMenu"
+    />
+    
     <!-- 画像がない場合のプレースホルダー -->
     <div
       v-if="!store.hasImage"
@@ -28,12 +44,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ImageIcon } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/appStore'
 import { useCanvas } from '@/composables/useCanvas'
 import { getRulerColorByDivisions } from '@/utils/rulerUtils'
-import type { Point } from '@/types'
+import ComparisonWizard from './ComparisonWizard.vue'
+import RulerContextMenu from './RulerContextMenu.vue'
+import type { Point, Ruler } from '@/types'
 
 const store = useAppStore()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -52,12 +70,30 @@ let isRotatingRuler = false
 let rotationCenter: Point | null = null
 let initialAngle = 0
 
+// Altキー状態管理
+let isAltPressed = false
+
+// コンテキストメニュー状態管理
+const contextMenuRuler = ref<Ruler | null>(null)
+const contextMenuPosition = ref<{ x: number; y: number } | null>(null)
+const isContextMenuVisible = ref(false)
+
 onMounted(() => {
   if (canvasRef.value) {
     setupCanvas(canvasRef.value)
     resizeCanvas()
     window.addEventListener('resize', resizeCanvas)
+    
+    // Altキー状態を追跡
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', resizeCanvas)
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
 })
 
 // 画像が変更されたときの描画と自動フィット
@@ -69,7 +105,7 @@ watch(() => store.image.src, async () => {
       // 画像をキャンバスにフィット
       fitImageToCanvas(img)
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   } else {
@@ -84,7 +120,7 @@ watch(() => store.rulers, () => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   }
@@ -96,23 +132,35 @@ watch(() => [store.image.scale, store.image.offsetX, store.image.offsetY], () =>
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   }
 }, { deep: true })
 
-// ロック済み比率が変更されたときの再描画
+// 比率履歴が変更されたときの再描画
 watch(() => store.lockedRatios, () => {
   if (store.hasImage && canvasRef.value) {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   }
 }, { deep: true })
+
+// 比率履歴選択が変更されたときの再描画
+watch(() => store.selectedHistoryId, () => {
+  if (store.hasImage && canvasRef.value) {
+    const img = new Image()
+    img.onload = () => {
+      drawImage(img, store.image)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
+    }
+    img.src = store.image.src
+  }
+})
 
 const resizeCanvas = (): void => {
   if (canvasRef.value && canvasRef.value.parentElement) {
@@ -139,7 +187,7 @@ const resizeCanvas = (): void => {
       const img = new Image()
       img.onload = () => {
         drawImage(img, store.image)
-        drawRulers(store.rulers, store.image, store.lockedRatios)
+        drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
       }
       img.src = store.image.src
     }
@@ -189,53 +237,85 @@ const displayToImage = (displayPoint: Point): Point => {
 const handleMouseDown = (event: MouseEvent): void => {
   const mousePos = getMousePosition(event)
   
-  if (store.currentTool === 'ruler' && store.hasImage) {
-    isDrawing = true
-    startPoint = displayToImage(mousePos)
-  } else if (store.currentTool === 'hand' && store.hasImage) {
-    isDragging = true
-    dragStartPos = mousePos
-    originalOffset = { x: store.image.offsetX, y: store.image.offsetY }
-  } else if (store.currentTool === 'select' && store.hasImage) {
-    // 選択ツール：定規をクリックして選択または編集
-    const clickedEndpoint = findEndpointAtPosition(mousePos)
-    const clickedRotationHandle = findRotationHandleAtPosition(mousePos)
+  if (!store.hasImage) return
+  
+  // 新しいコンテキスト認識システム
+  const clickedEndpoint = findEndpointAtPosition(mousePos)
+  const clickedRotationHandle = findRotationHandleAtPosition(mousePos)
+  const clickedRuler = findRulerAtPosition(mousePos)
+  
+  // Ctrl+クリック: 即座比較
+  if (event.ctrlKey && clickedRuler) {
+    store.startInstantComparison(clickedRuler.id)
+    return
+  }
+  
+  // 端点クリック: 定規編集モード
+  if (clickedEndpoint) {
+    isEditingRuler = true
+    editingRuler = clickedEndpoint.ruler
+    editingEndpoint = clickedEndpoint.endpoint
+    store.selectRuler(editingRuler.id)
+    store.setDragState(true, 'edit')
+    return
+  }
+  
+  // 回転ハンドルクリック: 回転モード
+  if (clickedRotationHandle) {
+    isRotatingRuler = true
+    editingRuler = clickedRotationHandle.ruler
+    rotationCenter = clickedRotationHandle.center
     
-    if (clickedEndpoint) {
-      // 端点をクリックした場合はサイズ編集モード
-      isEditingRuler = true
-      editingRuler = clickedEndpoint.ruler
-      editingEndpoint = clickedEndpoint.endpoint
-      store.selectRuler(editingRuler.id)
-    } else if (clickedRotationHandle) {
-      // 回転ハンドルをクリックした場合は回転モード
-      isRotatingRuler = true
-      editingRuler = clickedRotationHandle.ruler
-      rotationCenter = clickedRotationHandle.center
-      
-      // 初期角度を計算（マウス位置から中心への角度）
-      const imagePos = displayToImage(mousePos)
-      initialAngle = Math.atan2(
-        imagePos.y - rotationCenter.y,
-        imagePos.x - rotationCenter.x
-      )
-      
-      store.selectRuler(editingRuler.id)
-    } else {
-      const clickedRuler = findRulerAtPosition(mousePos)
-      if (clickedRuler) {
-        store.selectRuler(clickedRuler.id)
-      } else {
-        // 何もない場所をクリックした場合は選択解除
-        store.clearSelection()
-      }
-    }
-  } else if (store.currentTool === 'compare' && store.hasImage) {
-    // 比較ツール：定規をクリックして比較選択
-    const clickedRuler = findRulerAtPosition(mousePos)
-    if (clickedRuler) {
+    const imagePos = displayToImage(mousePos)
+    initialAngle = Math.atan2(
+      imagePos.y - rotationCenter.y,
+      imagePos.x - rotationCenter.x
+    )
+    
+    store.selectRuler(editingRuler.id)
+    store.setDragState(true, 'edit')
+    return
+  }
+  
+  // 定規クリック: 比較モード中か通常クリックかを判定
+  if (clickedRuler) {
+    // 比較モード中の場合は比較選択を優先
+    if (store.isInComparisonMode) {
       store.toggleCompareSelection(clickedRuler.id)
+      return
     }
+    
+    // 通常時は選択 + コンテキストメニュー表示
+    store.selectRuler(clickedRuler.id)
+    showContextMenu(clickedRuler, { x: event.clientX, y: event.clientY })
+    return
+  }
+  
+  // 空白エリアのクリック判定
+  const isEmptyArea = !clickedRuler && !clickedEndpoint && !clickedRotationHandle
+  
+  if (isEmptyArea) {
+    // Alt+ドラッグ: パン移動
+    if (event.altKey) {
+      isDragging = true
+      dragStartPos = mousePos
+      originalOffset = { x: store.image.offsetX, y: store.image.offsetY }
+      store.setDragState(true, 'pan')
+    } 
+    // 通常ドラッグ: 定規作成
+    else if (store.hasImage) {
+      isDrawing = true
+      startPoint = displayToImage(mousePos)
+      store.setDragState(true, 'create')
+    }
+    
+    // 比較モード中でない場合のみ選択をクリア
+    if (!store.isInComparisonMode) {
+      store.clearSelection()
+    }
+    
+    // コンテキストメニューを閉じる
+    closeContextMenu()
   }
 }
 
@@ -249,8 +329,8 @@ const handleMouseMove = (event: MouseEvent) => {
   
   const mousePos = getMousePosition(event)
   
-  // 定規ツールでのドラッグ描画
-  if (isDrawing && startPoint && store.currentTool === 'ruler') {
+  // 新しい定規作成中
+  if (isDrawing && startPoint && store.interactionContext.dragType === 'create') {
     const currentPoint = displayToImage(mousePos)
     const startPointSafe = startPoint // TypeScript型ガード用
     
@@ -258,15 +338,15 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
       // 一時的な定規を描画
       drawTemporaryRuler(startPointSafe, currentPoint, store.image)
     }
     img.src = store.image.src
   }
   
-  // ハンドツールでの画像ドラッグ
-  else if (isDragging && dragStartPos && originalOffset && store.currentTool === 'hand') {
+  // 画像パンドラッグ
+  else if (isDragging && dragStartPos && originalOffset && store.interactionContext.dragType === 'pan') {
     const deltaX = mousePos.x - dragStartPos.x
     const deltaY = mousePos.y - dragStartPos.y
     
@@ -282,13 +362,13 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   }
   
-  // 選択ツールでの定規編集（サイズ変更）
-  else if (isEditingRuler && editingRuler && editingEndpoint && store.currentTool === 'select') {
+  // 定規編集（サイズ変更）
+  else if (isEditingRuler && editingRuler && editingEndpoint && store.interactionContext.dragType === 'edit') {
     const currentPoint = displayToImage(mousePos)
     
     // 端点を更新
@@ -317,13 +397,13 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   }
   
-  // 選択ツールでの定規回転（改善版）
-  else if (isRotatingRuler && editingRuler && rotationCenter && store.currentTool === 'select') {
+  // 定規回転
+  else if (isRotatingRuler && editingRuler && rotationCenter && store.interactionContext.dragType === 'edit') {
     const currentPoint = displayToImage(mousePos)
     
     // 現在のマウス位置から中心への角度を計算
@@ -363,15 +443,15 @@ const handleMouseMove = (event: MouseEvent) => {
     const img = new Image()
     img.onload = () => {
       drawImage(img, store.image)
-      drawRulers(store.rulers, store.image, store.lockedRatios)
+      drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
     }
     img.src = store.image.src
   }
 }
 
 const handleMouseUp = (event: MouseEvent) => {
-  // 定規ツールの処理
-  if (isDrawing && startPoint && store.hasImage && store.currentTool === 'ruler') {
+  // 新しい定規作成完了
+  if (isDrawing && startPoint && store.hasImage && store.interactionContext.dragType === 'create') {
     const mousePos = getMousePosition(event)
     const endPoint = displayToImage(mousePos)
     
@@ -407,7 +487,7 @@ const handleMouseUp = (event: MouseEvent) => {
       const img = new Image()
       img.onload = () => {
         drawImage(img, store.image)
-        drawRulers(store.rulers, store.image, store.lockedRatios)
+        drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
       }
       img.src = store.image.src
     }
@@ -425,6 +505,9 @@ const handleMouseUp = (event: MouseEvent) => {
   editingEndpoint = null
   rotationCenter = null
   initialAngle = 0
+  
+  // ドラッグ状態をリセット
+  store.setDragState(false, null)
 }
 
 const handleWheel = (event: WheelEvent) => {
@@ -448,7 +531,7 @@ const handleWheel = (event: WheelEvent) => {
   const img = new Image()
   img.onload = () => {
     drawImage(img, store.image)
-    drawRulers(store.rulers, store.image, store.lockedRatios)
+    drawRulers(store.rulers, store.image, store.lockedRatios, store.highlightedRulerIds)
   }
   img.src = store.image.src
 }
@@ -502,10 +585,16 @@ const findRotationHandleAtPosition = (displayPos: Point) => {
     const angle = Math.atan2(endDisplay.y - startDisplay.y, endDisplay.x - startDisplay.x)
     const perpAngle = angle + Math.PI / 2
     
-    // 回転ハンドルの位置
+    // 比率表示があるかチェック
+    const hasRatioDisplay = store.lockedRatios.some(lock => 
+      lock.rulerA.id === ruler.id || lock.rulerB.id === ruler.id
+    )
+    
+    // 回転ハンドルの位置を比率表示の逆側に配置
     const handleDistance = 30
-    const handleX = midDisplay.x + Math.cos(perpAngle) * handleDistance
-    const handleY = midDisplay.y + Math.sin(perpAngle) * handleDistance
+    const direction = hasRatioDisplay ? 1 : -1
+    const handleX = midDisplay.x + Math.cos(perpAngle) * handleDistance * direction
+    const handleY = midDisplay.y + Math.sin(perpAngle) * handleDistance * direction
     
     // ハンドルとの距離をチェック
     const distance = Math.sqrt(
@@ -575,28 +664,79 @@ const distanceToRuler = (point: Point, ruler: any) => {
   return Math.sqrt(dx * dx + dy * dy)
 }
 
+
+// コンテキストメニュー関連の関数
+const showContextMenu = (ruler: Ruler, position: { x: number; y: number }) => {
+  contextMenuRuler.value = ruler
+  contextMenuPosition.value = position
+  isContextMenuVisible.value = true
+}
+
+const closeContextMenu = () => {
+  isContextMenuVisible.value = false
+  contextMenuRuler.value = null
+  contextMenuPosition.value = null
+}
+
+// コンテキストメニューのアクションハンドラー
+const handleContextMenuEdit = (rulerId: string) => {
+  store.selectRuler(rulerId)
+}
+
+const handleContextMenuCompare = (rulerId: string) => {
+  store.startInstantComparison(rulerId)
+}
+
+const handleContextMenuChangeColor = (rulerId: string, color: string) => {
+  store.updateRuler(rulerId, { color })
+}
+
+const handleContextMenuDelete = (rulerId: string) => {
+  store.removeRuler(rulerId)
+}
+
+// キーボードイベントハンドラー
+const handleKeyDown = (event: KeyboardEvent) => {
+  if (event.altKey && !isAltPressed) {
+    isAltPressed = true
+  }
+}
+
+const handleKeyUp = (event: KeyboardEvent) => {
+  if (!event.altKey && isAltPressed) {
+    isAltPressed = false
+  }
+}
+
 const getCursorClass = () => {
   if (!store.hasImage) return 'cursor-default'
   
-  switch (store.currentTool) {
-    case 'zoom':
-      return 'cursor-zoom-in'
-    case 'hand':
-      return isDragging ? 'cursor-grabbing' : 'cursor-grab'
-    case 'ruler':
-      return 'cursor-crosshair'
-    case 'compare':
-      return 'cursor-pointer'
-    case 'select':
-      if (isEditingRuler) {
-        return 'cursor-move'
-      }
-      if (isRotatingRuler) {
+  // 新しいコンテキスト認識ベースのカーソル
+  const context = store.interactionContext
+  
+  if (context.isDragging) {
+    switch (context.dragType) {
+      case 'create':
+        return 'cursor-crosshair'
+      case 'edit':
+        return isRotatingRuler ? 'cursor-grabbing' : 'cursor-move'
+      case 'pan':
         return 'cursor-grabbing'
-      }
+      default:
+        return 'cursor-default'
+    }
+  }
+  
+  // 通常状態でのカーソル
+  switch (context.mode) {
+    case 'ruler_selected':
       return 'cursor-pointer'
+    case 'comparison':
+      return 'cursor-pointer' // 比較モード中も定規を選択可能であることを示す
+    case 'idle':
     default:
-      return 'cursor-default'
+      // Altキー押下時はパン、通常時は定規作成
+      return isAltPressed ? 'cursor-grab' : 'cursor-crosshair'
   }
 }
 </script>
