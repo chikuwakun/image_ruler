@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [vue()],
   
   // GitHub Pages用設定
-  base: process.env.NODE_ENV === 'production' ? '/image_ruler/' : '/',
+  base: './',
   
   // ビルド設定
   build: {
